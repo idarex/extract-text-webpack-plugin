@@ -11,6 +11,31 @@ var loaderUtils = require("loader-utils");
 
 var nextId = 0;
 
+if (typeof Object.assign !== 'function') {
+	(function () {
+		Object.assign = function (target) {
+			'use strict'
+			if (target === undefined || target === null) {
+				throw new TypeError('Cannot convert undefined or null to object');
+			}
+
+			var output = Object(target);
+			for (var index = 1; index < arguments.length; index++) {
+				var source = arguments[index];
+				if (source !== undefined && source !== null) {
+					for (var nextKey in source) {
+						if (source.hasOwnProperty(nextKey)) {
+							output[nextKey] = source[nextKey];
+						}
+					}
+				}
+			}
+			return output;
+		};
+	})();
+}
+
+
 function ExtractTextPluginCompilation() {
 	this.modulesByIdentifier = {};
 }
@@ -285,6 +310,39 @@ ExtractTextPlugin.prototype.apply = function(compiler) {
 				callback();
 			}.bind(this));
 		}.bind(this));
+
+		var removeTips = '/*removed because of duplication*/';
+
+		compilation.plugin("after-optimize-module-ids", function(callback) {
+			extractedChunks.forEach(function(extractedChunk) {
+				var chunk = extractedChunk.originalChunk;
+
+				var moduleIds = extractedChunk.modules.map(function(module) {
+					return module._originalModule.debugId;
+				});
+
+				chunk.modules = chunk.modules.slice().map(function(module) {
+					if (moduleIds.indexOf(module.debugId) > -1) {
+						var newModule = Object.create(Object.getPrototypeOf(module));
+
+						Object.assign(newModule, module);
+
+						newModule.source = function() {
+							return removeTips;
+						};
+
+						newModule.size = function() {
+							return removeTips.length;
+						};
+
+						return newModule;
+					} else {
+						return module;
+					}
+				});
+			});
+		}.bind(this));
+
 		compilation.plugin("additional-assets", function(callback) {
 			extractedChunks.forEach(function(extractedChunk) {
 				if(extractedChunk.modules.length) {
